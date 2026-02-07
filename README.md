@@ -78,7 +78,7 @@ orb create ubuntu clab
 # Install Docker in the VM
 orb exec -m clab -s "curl -fsSL https://get.docker.com | sudo sh"
 
-# Install Containerlab (already installed if using the clab VM)
+# Install Containerlab
 ```
 
 ### 2. Import cEOS Image

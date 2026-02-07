@@ -126,11 +126,72 @@ All nodes are pre-configured with:
 
 ### Install Walktopo in VM
 
+Walktopo must run inside the clab VM to access the container network. Choose one of the following installation methods:
+
+#### Option 1: Download Pre-built Binary (Easiest)
+
+Download the Linux ARM64 release from the [walktopo releases page](https://github.com/mhuot/walktopo/releases):
+
 ```bash
-# Copy walktopo binary to VM
-orb push -m clab /path/to/walktopo-linux-arm64 /tmp/walktopo
+# Download the latest Linux ARM64 release
+cd ~/Downloads
+curl -LO https://github.com/mhuot/walktopo/releases/latest/download/walktopo_linux_arm64.tar.gz
+
+# Extract the binary
+tar -xzf walktopo_linux_arm64.tar.gz
+
+# Copy to VM and install
+orb push -m clab walktopo /tmp/walktopo
 orb exec -m clab sudo mv /tmp/walktopo /usr/local/bin/walktopo
 orb exec -m clab sudo chmod +x /usr/local/bin/walktopo
+
+# Verify installation
+orb exec -m clab walktopo version
+```
+
+#### Option 2: Build in OrbStack VM
+
+Build walktopo directly in the Linux VM:
+
+```bash
+# Install Go in the VM (if not already installed)
+orb exec -m clab bash -c "curl -LO https://go.dev/dl/go1.23.5.linux-arm64.tar.gz"
+orb exec -m clab sudo rm -rf /usr/local/go
+orb exec -m clab sudo tar -C /usr/local -xzf go1.23.5.linux-arm64.tar.gz
+orb exec -m clab bash -c "echo 'export PATH=\$PATH:/usr/local/go/bin' >> ~/.bashrc"
+
+# Clone and build walktopo (OrbStack mounts your Mac filesystem in the VM)
+orb exec -m clab bash -c "cd /tmp && git clone https://github.com/mhuot/walktopo.git"
+orb exec -m clab bash -c "cd /tmp/walktopo && /usr/local/go/bin/go build -o walktopo ./cmd/walktopo"
+orb exec -m clab sudo mv /tmp/walktopo/walktopo /usr/local/bin/walktopo
+
+# Verify installation
+orb exec -m clab walktopo version
+```
+
+#### Option 3: Cross-Compile on Mac
+
+Build a Linux ARM64 binary on your Mac:
+
+```bash
+# Clone walktopo on your Mac
+cd ~/projects  # or your preferred directory
+git clone https://github.com/mhuot/walktopo.git
+cd walktopo
+
+# Pull latest changes
+git pull
+
+# Cross-compile for Linux ARM64
+GOOS=linux GOARCH=arm64 go build -o walktopo-linux-arm64 ./cmd/walktopo
+
+# Copy to VM and install
+orb push -m clab walktopo-linux-arm64 /tmp/walktopo
+orb exec -m clab sudo mv /tmp/walktopo /usr/local/bin/walktopo
+orb exec -m clab sudo chmod +x /usr/local/bin/walktopo
+
+# Verify installation
+orb exec -m clab walktopo version
 ```
 
 ### Run SNMP Discovery

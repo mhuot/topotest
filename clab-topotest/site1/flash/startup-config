@@ -1,0 +1,50 @@
+! Startup-config last modified at Sat Feb  7 03:11:58 2026 by root
+! device: site1 (cEOSLab, EOS-4.35.1F-45292141.4351F.1 (engineering build))
+!
+no aaa root
+!
+no service interface inactive port-id allocation disabled
+!
+service routing protocols model multi-agent
+!
+hostname site1
+!
+snmp-server contact admin@lab.local
+snmp-server location Lab
+snmp-server community public ro
+!
+spanning-tree mode mstp
+!
+system l1
+   unsupported speed action error
+   unsupported error-correction action error
+!
+interface Ethernet1
+   description link to hub1
+   no switchport
+   ip address 10.0.14.2/30
+!
+interface Ethernet2
+   description link to hub2
+   no switchport
+   ip address 10.0.24.2/30
+!
+interface Ethernet3
+   description link to sub1
+   no switchport
+   ip address 10.0.34.2/30
+!
+interface Management0
+   ip address 172.20.20.4/24
+   ipv6 address 3fff:172:20:20::4/64
+!
+ip routing
+!
+router multicast
+   ipv4
+      software-forwarding kernel
+   !
+   ipv6
+      software-forwarding kernel
+!
+end

@@ -1,0 +1,26 @@
+---
+hub1:
+    username: admin
+    password: admin
+    platform: ceos
+    hostname: 172.20.20.6
+hub2:
+    username: admin
+    password: admin
+    platform: ceos
+    hostname: 172.20.20.2
+site1:
+    username: admin
+    password: admin
+    platform: ceos
+    hostname: 172.20.20.4
+site2:
+    username: admin
+    password: admin
+    platform: ceos
+    hostname: 172.20.20.5
+sub1:
+    username: admin
+    password: admin
+    platform: ceos
+    hostname: 172.20.20.3

@@ -2,6 +2,11 @@
 
 A containerlab-based network topology for testing [walktopo](https://github.com/mhuot/walktopo) SNMP discovery capabilities.
 
+> **⚠️ Apple Silicon Specific**: This guide is specifically for **macOS with Apple Silicon (ARM64/M1/M2/M3)**. If you're using Intel Macs, Linux, or Windows, the setup process will be different:
+> - **Intel Macs/Linux x86_64**: Use standard cEOS x86_64 images and follow [containerlab's standard installation](https://containerlab.dev/install/)
+> - **Windows**: Refer to [containerlab Windows installation guide](https://containerlab.dev/install/#windows)
+> - **Linux ARM64**: Similar to this guide but without OrbStack - use native Docker and containerlab
+
 ## Topology Overview
 
 This lab consists of 5 Arista cEOS nodes configured in a redundant hub-and-spoke topology:
@@ -54,10 +59,13 @@ The topology includes the following links:
 
 ## Prerequisites
 
-- macOS with Apple Silicon (ARM64)
+**This setup is designed for Apple Silicon Macs only.**
+
+- macOS with Apple Silicon (M1/M2/M3)
 - [OrbStack](https://orbstack.dev/) installed
 - Docker installed in OrbStack VM
 - Containerlab installed in OrbStack VM
+- Arista cEOS ARM64 image (see setup instructions below)
 
 ## Setup Instructions
 

@@ -1,0 +1,11 @@
+# cEOS images (too large for GitHub)
+*.tar.xz
+*.tar.gz
+*.tar
+
+# Containerlab runtime
+clab-*/
+
+# Temporary files
+*.log
+*.tmp

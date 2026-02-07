@@ -75,12 +75,16 @@ orb exec -m clab -s "curl -fsSL https://get.docker.com | sudo sh"
 
 ### 2. Import cEOS Image
 
-The lab requires the Arista cEOS ARM image. Import it into the VM's Docker:
+The lab requires the Arista cEOS ARM image. Download it from [Arista's Getting Started with cEOS-lab in Containerlab guide](https://arista.my.site.com/AristaCommunity/s/article/Getting-Started-with-cEOS-lab-in-Containerlab).
+
+Import the ARM64 image into the VM's Docker:
 
 ```bash
 # Import the cEOS image (from your cEOS tar file)
 orb exec -m clab docker import cEOSarm-lab-4.35.1F.tar ceosarm:4.35.1F
 ```
+
+**Note**: Make sure to download the ARM64 version (e.g., `cEOSarm-lab-4.35.1F.tar.xz`) for Apple Silicon Macs.
 
 ### 3. Deploy the Lab
 

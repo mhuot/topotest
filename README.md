@@ -16,17 +16,17 @@ This lab consists of 5 Arista cEOS nodes configured in a redundant hub-and-spoke
 
 ```mermaid
 ---
-title: topotest
+title: topotest (full topology)
 ---
 graph TD
-  hub1---hub2
-  hub1---sub1
-  hub1---site1
-  hub1---site2
-  hub2---sub1
-  hub2---site1
-  hub2---site2
-  sub1---site1
+  hub1 -- "10.0.12.0/30" --- hub2
+  hub1 -- "10.0.13.0/30" --- sub1
+  hub1 -- "10.0.14.0/30" --- site1
+  hub1 -- "10.0.15.0/30" --- site2
+  hub2 -- "10.0.23.0/30" --- sub1
+  hub2 -- "10.0.24.0/30" --- site1
+  hub2 -- "10.0.25.0/30" --- site2
+  sub1 -- "10.0.34.0/30" --- site1
 ```
 
 ### Connections
@@ -46,13 +46,15 @@ The topology includes the following links:
 
 ### Node Details
 
-| Node | Container IP | Management IP | Description |
-|------|-------------|---------------|-------------|
-| hub1 | 172.20.20.6 | 192.168.1.101/24 | Primary hub router |
-| hub2 | 172.20.20.2 | 192.168.1.102/24 | Secondary hub router |
-| sub1 | 172.20.20.3 | 192.168.1.103/24 | Subscriber router |
-| site1 | 172.20.20.4 | 192.168.1.104/24 | Site 1 router |
-| site2 | 172.20.20.5 | 192.168.1.105/24 | Site 2 router |
+| Node | Management IP | Description |
+|------|---------------|-------------|
+| hub1 | 192.168.1.101/24 | Primary hub router |
+| hub2 | 192.168.1.102/24 | Secondary hub router |
+| sub1 | 192.168.1.103/24 | Subscriber router |
+| site1 | 192.168.1.104/24 | Site 1 router |
+| site2 | 192.168.1.105/24 | Site 2 router |
+
+> **Note:** Container IPs (172.20.20.x range) are assigned dynamically by containerlab and may change between deployments. Run `./lab.sh inspect` to see the current IPs. The management IPs above are statically configured in each node's startup config.
 
 ## Quick Start
 
@@ -66,6 +68,15 @@ The `lab.sh` helper script auto-detects your platform and wraps all containerlab
 ./lab.sh destroy    # Tear down the lab
 ```
 
+For the minimal Alpine topology (no cEOS image required):
+
+```bash
+./lab.sh --minimal deploy     # Deploy minimal lab
+./lab.sh --minimal inspect    # Check status
+./lab.sh --minimal exec switch1  # Shell into a node
+./lab.sh --minimal destroy    # Tear down
+```
+
 Run `./lab.sh help` for all available commands.
 
 ## Minimal Topology (Low Resource Alternative)
@@ -73,19 +84,32 @@ Run `./lab.sh help` for all available commands.
 For quick testing without the overhead of cEOS images, use the minimal topology with Alpine Linux containers:
 
 ```bash
-# Deploy minimal lab (no cEOS image required)
-sudo containerlab deploy -t topology-minimal.clab.yml
-
-# Check status
-sudo containerlab inspect -t topology-minimal.clab.yml
-
-# Destroy
-sudo containerlab destroy -t topology-minimal.clab.yml
+./lab.sh --minimal deploy          # Deploy minimal lab
+./lab.sh --minimal inspect         # Check status
+./lab.sh --minimal exec switch1    # Shell into a node
+./lab.sh --minimal destroy         # Tear down
 ```
 
-On macOS via OrbStack, prefix with `orb exec -m clab`.
+### Minimal Nodes
 
-### Minimal Topology Details
+3 Alpine Linux containers connected in a triangle:
+
+```mermaid
+graph TD
+  switch1---switch2
+  switch2---switch3
+  switch3---switch1
+```
+
+| Link | Interface A | Interface B |
+|------|-------------|-------------|
+| switch1 ↔ switch2 | eth1 | eth1 |
+| switch2 ↔ switch3 | eth2 | eth1 |
+| switch3 ↔ switch1 | eth2 | eth2 |
+
+Each node installs `lldpd` and `net-snmp` at startup via exec commands. SNMP community is `public` (v2c).
+
+### Comparison
 
 | Feature | Full (cEOS) | Minimal (Alpine) |
 |---------|-------------|------------------|
@@ -238,23 +262,42 @@ All nodes are pre-configured with:
 
 You can query any node directly using `snmpwalk` to verify SNMP is working before running walktopo.
 
+### Full Topology
+
 ```mermaid
 graph LR
   subgraph Host
     snmpwalk
   end
-  subgraph Containerlab Network 172.20.20.0/24
-    hub1["hub1 · 172.20.20.6"]
-    hub2["hub2 · 172.20.20.2"]
-    sub1["sub1 · 172.20.20.3"]
-    site1["site1 · 172.20.20.4"]
-    site2["site2 · 172.20.20.5"]
+  subgraph Containerlab Network
+    hub1["hub1"]
+    hub2["hub2"]
+    sub1["sub1"]
+    site1["site1"]
+    site2["site2"]
   end
   snmpwalk -- "UDP/161<br/>community: public" --> hub1
   snmpwalk -.-> hub2
   snmpwalk -.-> sub1
   snmpwalk -.-> site1
   snmpwalk -.-> site2
+```
+
+### Minimal Topology
+
+```mermaid
+graph LR
+  subgraph Host
+    snmpwalk
+  end
+  subgraph Containerlab Network
+    switch1["switch1"]
+    switch2["switch2"]
+    switch3["switch3"]
+  end
+  snmpwalk -- "UDP/161<br/>community: public" --> switch1
+  snmpwalk -.-> switch2
+  snmpwalk -.-> switch3
 ```
 
 ### Install snmpwalk

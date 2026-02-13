@@ -436,6 +436,73 @@ cmd_info() {
     fi
 }
 
+cmd_validate() {
+    if [ "$USE_MINIMAL" = false ]; then
+        echo "Validation is only supported for the minimal topology."
+        echo "Run with: $0 --minimal validate"
+        return 0
+    fi
+
+    local nodes="switch1 switch2 switch3"
+    local pass=0
+    local fail=0
+
+    echo "=== LLDP Validation (minimal topology) ==="
+    echo ""
+
+    # Check 1: lldpcli neighbors
+    echo "--- Check 1: lldpcli neighbors ---"
+    for node in $nodes; do
+        local container="clab-${LAB_NAME}-${node}"
+        local output
+        output=$(run_cmd docker exec "$container" lldpcli show neighbors 2>&1) || true
+
+        # Determine expected neighbors
+        local expected1 expected2
+        case "$node" in
+            switch1) expected1="switch2" ; expected2="switch3" ;;
+            switch2) expected1="switch1" ; expected2="switch3" ;;
+            switch3) expected1="switch1" ; expected2="switch2" ;;
+        esac
+
+        local found1 found2
+        found1=$(echo "$output" | grep -c "$expected1" || true)
+        found2=$(echo "$output" | grep -c "$expected2" || true)
+
+        if [ "$found1" -gt 0 ] && [ "$found2" -gt 0 ]; then
+            echo "  PASS  $node sees $expected1 and $expected2"
+            pass=$((pass + 1))
+        else
+            echo "  FAIL  $node missing neighbors (expected $expected1, $expected2)"
+            fail=$((fail + 1))
+        fi
+    done
+
+    echo ""
+
+    # Check 2: SNMP LLDP MIB
+    echo "--- Check 2: SNMP LLDP MIB ---"
+    for node in $nodes; do
+        local container="clab-${LAB_NAME}-${node}"
+        local output
+        output=$(run_cmd docker exec "$container" snmpwalk -v2c -c public localhost 1.0.8802.1.1.2 2>&1) || true
+
+        if [ -n "$output" ] && ! echo "$output" | grep -q "No Such Object\|Timeout\|No SNMP response"; then
+            echo "  PASS  $node LLDP MIB returns data"
+            pass=$((pass + 1))
+        else
+            echo "  FAIL  $node LLDP MIB empty or unreachable"
+            fail=$((fail + 1))
+        fi
+    done
+
+    echo ""
+    echo "=== Results: $pass passed, $fail failed ==="
+    if [ "$fail" -gt 0 ]; then
+        return 1
+    fi
+}
+
 # --- Usage ---
 
 usage() {
@@ -458,6 +525,7 @@ Commands:
   ssh <node>      SSH to a node (e.g., hub1)
   exec <node>     Open shell on a node (Cli for cEOS, sh for minimal)
   import <file>   Import a cEOS image tarball
+  validate        Validate LLDP neighbors and SNMP (minimal topology)
   info            Show detected platform and settings
 
 Environment:
@@ -517,6 +585,7 @@ case "$command" in
     ssh)      cmd_ssh "$@" ;;
     exec)     cmd_exec "$@" ;;
     import)   cmd_import "$@" ;;
+    validate) cmd_validate "$@" ;;
     info)     cmd_info "$@" ;;
     help) usage ;;
     *)

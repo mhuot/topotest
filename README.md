@@ -68,6 +68,36 @@ The `lab.sh` helper script auto-detects your platform and wraps all containerlab
 
 Run `./lab.sh help` for all available commands.
 
+## Minimal Topology (Low Resource Alternative)
+
+For quick testing without the overhead of cEOS images, use the minimal topology with Alpine Linux containers:
+
+```bash
+# Deploy minimal lab (no cEOS image required)
+sudo containerlab deploy -t topology-minimal.clab.yml
+
+# Check status
+sudo containerlab inspect -t topology-minimal.clab.yml
+
+# Destroy
+sudo containerlab destroy -t topology-minimal.clab.yml
+```
+
+On macOS via OrbStack, prefix with `orb exec -m clab`.
+
+### Minimal Topology Details
+
+| Feature | Full (cEOS) | Minimal (Alpine) |
+|---------|-------------|------------------|
+| Nodes | 5 cEOS routers | 3 Alpine Linux |
+| Memory per node | ~1.5GB | ~50MB |
+| Image download | Arista account required | Public Alpine image |
+| SNMP | Yes (v2c, community: public) | Yes (v2c, community: public) |
+| LLDP | Yes | Yes |
+| Routing protocols | Full EOS features | None |
+
+The minimal topology is ideal for walktopo SNMP/LLDP discovery testing when you don't need full routing capabilities.
+
 ## Prerequisites
 
 ### macOS (Apple Silicon)
@@ -403,9 +433,10 @@ CEOS_IMAGE=ceos64:4.36.0F ./lab.sh deploy
 
 ## Files
 
-- `topology.clab.yml` - Containerlab topology definition
+- `topology.clab.yml` - Full Arista cEOS topology (5 nodes)
+- `topology-minimal.clab.yml` - Lightweight Alpine topology (3 nodes)
 - `lab.sh` - Cross-platform helper script
-- `configs/` - Device startup configurations
+- `configs/` - Device startup configurations (cEOS only)
   - `hub1.cfg` - Hub1 configuration
   - `hub2.cfg` - Hub2 configuration
   - `sub1.cfg` - Sub1 configuration

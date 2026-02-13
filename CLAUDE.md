@@ -49,7 +49,8 @@ orb exec -m clab docker exec -it clab-topotest-hub1 Cli
 
 ## Architecture
 
-- **topology.clab.yml** — Containerlab topology definition. Declares 5 cEOS nodes and 8 inter-device links. Uses `${CEOS_IMAGE:-ceos64:4.35.1F}` for the node image — defaults to x86_64 on Linux, overridden to `ceosarm:4.35.1F` on ARM64 (set by `lab.sh` or manually).
+- **topology.clab.yml** — Full Containerlab topology. Declares 5 cEOS nodes and 8 inter-device links. Uses `${CEOS_IMAGE:-ceos64:4.35.1F}` for the node image — defaults to x86_64 on Linux, overridden to `ceosarm:4.35.1F` on ARM64 (set by `lab.sh` or manually).
+- **topology-minimal.clab.yml** — Lightweight topology using Alpine Linux. 3 nodes with lldpd + net-snmp installed via exec commands. No cEOS image required. Deploy directly with `sudo containerlab deploy -t topology-minimal.clab.yml`.
 - **lab.sh** — Cross-platform helper script. Detects macOS/Linux and arm64/x86_64, sets `CEOS_IMAGE`, wraps containerlab with OrbStack on macOS.
 - **configs/** — Arista EOS startup configurations, one per node. Each config sets up hostname, SNMP (community `public`, v2c), LLDP, management IP, and inter-device link IPs.
 

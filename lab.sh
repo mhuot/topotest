@@ -6,6 +6,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOPO_FILE="$SCRIPT_DIR/topology.clab.yml"
+TOPO_MINIMAL="$SCRIPT_DIR/topology-minimal.clab.yml"
+USE_MINIMAL=false
+LAB_NAME="topotest"
 
 # --- Platform detection ---
 
@@ -67,18 +70,32 @@ run_clab() {
 
 # Resolve topology file path (macOS needs absolute path visible in VM)
 topo_path() {
-    if [ "$PLATFORM" = "macos" ]; then
-        # OrbStack mounts the Mac filesystem — use the absolute Mac path
-        echo "$TOPO_FILE"
+    local topo
+    if [ "$USE_MINIMAL" = true ]; then
+        topo="$TOPO_MINIMAL"
     else
-        echo "$TOPO_FILE"
+        topo="$TOPO_FILE"
+    fi
+    echo "$topo"
+}
+
+# Set lab name based on topology
+set_lab_name() {
+    if [ "$USE_MINIMAL" = true ]; then
+        LAB_NAME="topotest-minimal"
+    else
+        LAB_NAME="topotest"
     fi
 }
 
 # --- Commands ---
 
 cmd_deploy() {
-    echo "Deploying lab (image: $CEOS_IMAGE)..."
+    if [ "$USE_MINIMAL" = true ]; then
+        echo "Deploying minimal lab (Alpine Linux)..."
+    else
+        echo "Deploying lab (image: $CEOS_IMAGE)..."
+    fi
     run_clab deploy -t "$(topo_path)" "$@"
 }
 
@@ -107,7 +124,7 @@ cmd_ssh() {
         exit 1
     fi
     local node="$1"; shift
-    run_cmd ssh "admin@clab-topotest-${node}" "$@"
+    run_cmd ssh "admin@clab-${LAB_NAME}-${node}" "$@"
 }
 
 cmd_exec() {
@@ -118,9 +135,13 @@ cmd_exec() {
     fi
     local node="$1"; shift
     if [ $# -eq 0 ]; then
-        run_cmd docker exec -it "clab-topotest-${node}" Cli
+        if [ "$USE_MINIMAL" = true ]; then
+            run_cmd docker exec -it "clab-${LAB_NAME}-${node}" sh
+        else
+            run_cmd docker exec -it "clab-${LAB_NAME}-${node}" Cli
+        fi
     else
-        run_cmd docker exec -it "clab-topotest-${node}" "$@"
+        run_cmd docker exec -it "clab-${LAB_NAME}-${node}" "$@"
     fi
 }
 
@@ -137,8 +158,14 @@ cmd_import() {
 
 cmd_info() {
     echo "Platform:     $PLATFORM ($ARCH)"
-    echo "Image:        $CEOS_IMAGE"
-    echo "Topology:     $TOPO_FILE"
+    if [ "$USE_MINIMAL" = true ]; then
+        echo "Topology:     minimal (Alpine Linux)"
+        echo "Image:        alpine:3.21"
+    else
+        echo "Topology:     full (Arista cEOS)"
+        echo "Image:        $CEOS_IMAGE"
+    fi
+    echo "Lab name:     $LAB_NAME"
     if [ "$PLATFORM" = "macos" ]; then
         echo "Execution:    via OrbStack VM 'clab'"
         echo "Host access:  host.orb.internal"
@@ -152,9 +179,12 @@ cmd_info() {
 
 usage() {
     cat <<EOF
-Usage: $0 <command> [options]
+Usage: $0 [--minimal] <command> [options]
 
 Cross-platform helper for the topotest containerlab topology.
+
+Options:
+  --minimal       Use the minimal Alpine-based topology (low resource)
 
 Commands:
   deploy          Deploy the lab
@@ -163,7 +193,7 @@ Commands:
   save            Save running configs
   graph           Generate topology graph
   ssh <node>      SSH to a node (e.g., hub1)
-  exec <node>     Open Cli on a node (or run a command)
+  exec <node>     Open shell on a node (Cli for cEOS, sh for minimal)
   import <file>   Import a cEOS image tarball
   info            Show detected platform and settings
 
@@ -172,17 +202,39 @@ Environment:
                   Default: ceos64:4.35.1F (x86_64) or ceosarm:4.35.1F (arm64)
 
 Examples:
-  $0 deploy
-  $0 ssh hub1
-  $0 exec site1 Cli
+  $0 deploy                    # Deploy full cEOS lab
+  $0 --minimal deploy          # Deploy minimal Alpine lab
+  $0 ssh hub1                  # SSH to hub1 (full lab)
+  $0 --minimal exec switch1    # Shell into switch1 (minimal lab)
   $0 import cEOS64-lab-4.35.1F.tar
-  CEOS_IMAGE=ceos:custom $0 deploy
 EOF
 }
 
 # --- Main ---
 
 detect_platform
+
+# Parse global options
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --minimal|-m)
+            USE_MINIMAL=true
+            shift
+            ;;
+        -*)
+            if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+                usage
+                exit 0
+            fi
+            break
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+set_lab_name
 
 if [ $# -lt 1 ]; then
     usage
@@ -201,7 +253,7 @@ case "$command" in
     exec)     cmd_exec "$@" ;;
     import)   cmd_import "$@" ;;
     info)     cmd_info "$@" ;;
-    help|-h|--help) usage ;;
+    help) usage ;;
     *)
         echo "Error: Unknown command '$command'" >&2
         echo "Run '$0 help' for usage." >&2

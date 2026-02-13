@@ -17,7 +17,7 @@ topology:
         - echo 'syslocation Lab-Switch1' >> /etc/snmp/snmpd.conf
         - echo 'syscontact admin@lab.local' >> /etc/snmp/snmpd.conf
         - snmpd -Lf /var/log/snmpd.log
-        - lldpd -M 4
+        - lldpd -M 4 -x
 
     switch2:
       exec:
@@ -27,7 +27,7 @@ topology:
         - echo 'syslocation Lab-Switch2' >> /etc/snmp/snmpd.conf
         - echo 'syscontact admin@lab.local' >> /etc/snmp/snmpd.conf
         - snmpd -Lf /var/log/snmpd.log
-        - lldpd -M 4
+        - lldpd -M 4 -x
 
     switch3:
       exec:
@@ -37,7 +37,7 @@ topology:
         - echo 'syslocation Lab-Switch3' >> /etc/snmp/snmpd.conf
         - echo 'syscontact admin@lab.local' >> /etc/snmp/snmpd.conf
         - snmpd -Lf /var/log/snmpd.log
-        - lldpd -M 4
+        - lldpd -M 4 -x
 
   links:
     - endpoints: ["switch1:eth1", "switch2:eth1"]

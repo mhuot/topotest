@@ -83,6 +83,68 @@ Run `./lab.sh help` for all available commands.
 - [Containerlab](https://containerlab.dev/install/) installed (v0.41+)
 - Arista cEOS **x86_64** image (`ceos64:4.35.1F`)
 
+## Importing the Arista cEOS Image
+
+Containerlab uses the Arista cEOS (containerized EOS) image to run each node. You must download it from Arista and import it into Docker before deploying the lab.
+
+### 1. Create an Arista Account
+
+Register for a free account at [arista.com](https://www.arista.com/en/user-registration). No support contract is required — cEOS-lab images are available to all registered users.
+
+### 2. Download the Image
+
+Go to the [Arista Software Downloads](https://www.arista.com/en/support/software-download) page. Navigate to **cEOS-lab** and download the correct image for your platform:
+
+| Platform | Image File | Docker Tag |
+|----------|-----------|------------|
+| Linux x86_64 | `cEOS64-lab-4.35.1F.tar` | `ceos64:4.35.1F` |
+| macOS ARM64 (Apple Silicon) | `cEOSarm-lab-4.35.1F.tar` | `ceosarm:4.35.1F` |
+
+> **Tip:** Look under the **4.35.1F** release. The ARM64 image is listed separately as `cEOS-lab-arm` or similar. If you want a different version, update the `CEOS_IMAGE` environment variable accordingly (see [Environment Variables](#environment-variables)).
+
+### 3. Import the Image
+
+Use `./lab.sh import` which runs `docker import` with the correct tag for your platform:
+
+**Linux:**
+
+```bash
+./lab.sh import cEOS64-lab-4.35.1F.tar
+```
+
+**macOS:**
+
+```bash
+./lab.sh import cEOSarm-lab-4.35.1F.tar
+```
+
+> **Important:** cEOS images must be imported with `docker import`, not `docker load`. The `lab.sh import` command handles this correctly. If importing manually, run:
+> ```bash
+> docker import cEOS64-lab-4.35.1F.tar ceos64:4.35.1F
+> ```
+
+### 4. Verify the Image
+
+Confirm the image was imported successfully:
+
+**Linux:**
+
+```bash
+docker images | grep ceos
+```
+
+**macOS (inside OrbStack VM):**
+
+```bash
+orb exec -m clab docker images | grep ceos
+```
+
+You should see output like:
+
+```
+ceos64       4.35.1F    abc123def456   About a minute ago   2.1GB
+```
+
 ## Setup Instructions
 
 ### macOS Setup
@@ -102,11 +164,7 @@ orb exec -m clab bash -c "curl -sL https://containerlab.dev/setup | sudo bash"
 
 #### 2. Import cEOS Image
 
-Download the ARM64 cEOS image from [Arista's Getting Started with cEOS-lab in Containerlab guide](https://arista.my.site.com/AristaCommunity/s/article/Getting-Started-with-cEOS-lab-in-Containerlab).
-
-```bash
-./lab.sh import cEOSarm-lab-4.35.1F.tar
-```
+Follow the [Importing the Arista cEOS Image](#importing-the-arista-ceos-image) instructions above to download and import `cEOSarm-lab-4.35.1F.tar`.
 
 ### Linux Setup
 
@@ -120,11 +178,7 @@ Docker must already be installed. See [Docker installation docs](https://docs.do
 
 #### 2. Import cEOS Image
 
-Download the x86_64 cEOS image from [Arista's Getting Started with cEOS-lab in Containerlab guide](https://arista.my.site.com/AristaCommunity/s/article/Getting-Started-with-cEOS-lab-in-Containerlab).
-
-```bash
-./lab.sh import cEOS64-lab-4.35.1F.tar
-```
+Follow the [Importing the Arista cEOS Image](#importing-the-arista-ceos-image) instructions above to download and import `cEOS64-lab-4.35.1F.tar`.
 
 ### Deploy the Lab
 

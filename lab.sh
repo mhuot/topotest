@@ -9,6 +9,9 @@ TOPO_FILE="$SCRIPT_DIR/topology.clab.yml"
 TOPO_MINIMAL="$SCRIPT_DIR/topology-minimal.clab.yml"
 USE_MINIMAL=false
 LAB_NAME="topotest"
+DEFAULT_SUBNET="172.20.20.0/24"
+DEFAULT_SUBNET_V6="3fff:172:20:20::/64"
+DEFAULT_NETWORK="clab"
 
 # --- Platform detection ---
 
@@ -88,20 +91,278 @@ set_lab_name() {
     fi
 }
 
+# --- Network validation ---
+
+# Get Docker command (wrapped for macOS)
+docker_cmd() {
+    if [ "$PLATFORM" = "macos" ]; then
+        orb exec -m clab docker "$@"
+    else
+        docker "$@"
+    fi
+}
+
+# List all Docker networks with their subnets
+list_networks() {
+    docker_cmd network ls --format '{{.Name}}' | while read -r name; do
+        # Get IPv4 subnet only (filter out IPv6)
+        subnet=$(docker_cmd network inspect "$name" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' | head -1 || true)
+        if [ -n "$subnet" ]; then
+            printf "  %-40s %s\n" "$name" "$subnet"
+        fi
+    done
+}
+
+# Check if a network with specific subnet exists
+find_network_by_subnet() {
+    local target_subnet="$1"
+    local networks
+    networks=$(docker_cmd network ls --format '{{.Name}}')
+    for name in $networks; do
+        # Get IPv4 subnet only (filter out IPv6)
+        subnet=$(docker_cmd network inspect "$name" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' | head -1 || true)
+        if [ "$subnet" = "$target_subnet" ]; then
+            echo "$name"
+            return 0
+        fi
+    done
+}
+
+# Check if a network has any attached containers
+network_has_containers() {
+    local name="$1"
+    local containers
+    containers=$(docker_cmd network inspect "$name" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null)
+    [ -n "$containers" ]
+}
+
+# Suggest next available subnet in 172.20.x.0/24 range
+# Outputs: "<ipv4_subnet> <ipv6_subnet>"
+suggest_subnet() {
+    local used_subnets
+    used_subnets=$(docker_cmd network ls --format '{{.Name}}' | while read -r name; do
+        docker_cmd network inspect "$name" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null | tr ' ' '\n'
+    done | grep "^172\.20\." | sort -u || true)
+
+    for i in $(seq 20 30); do
+        local candidate="172.20.${i}.0/24"
+        if ! echo "$used_subnets" | grep -q "^${candidate}$"; then
+            echo "$candidate 3fff:172:20:${i}::/64"
+            return 0
+        fi
+    done
+    echo "172.20.31.0/24 3fff:172:20:31::/64"
+}
+
+# Validate network availability before deploy
+validate_network() {
+    local conflict_network
+    conflict_network=$(find_network_by_subnet "$DEFAULT_SUBNET")
+
+    # Check if clab network already exists and is correct
+    if [ -n "$conflict_network" ] && [ "$conflict_network" = "$DEFAULT_NETWORK" ]; then
+        echo "Network '$DEFAULT_NETWORK' already exists with subnet $DEFAULT_SUBNET (OK)"
+        return 0
+    fi
+
+    # No conflict
+    if [ -z "$conflict_network" ]; then
+        return 0
+    fi
+
+    # Conflict detected
+    echo ""
+    echo "Network conflict detected!"
+    echo "  Subnet $DEFAULT_SUBNET is in use by: $conflict_network"
+    echo ""
+
+    # Check if conflicting network has containers
+    if network_has_containers "$conflict_network"; then
+        echo "  Warning: Network '$conflict_network' has running containers."
+        echo ""
+        echo "Options:"
+        echo "  1) Use a different subnet (recommended)"
+        echo "  2) Stop containers and remove network"
+        echo "  3) Cancel"
+    else
+        echo "  Network '$conflict_network' has no running containers."
+        echo ""
+        echo "Options:"
+        echo "  1) Remove unused network '$conflict_network' and continue"
+        echo "  2) Use a different subnet"
+        echo "  3) Cancel"
+    fi
+    echo ""
+
+    local choice
+    read -r -p "Select option [1-3]: " choice
+
+    if network_has_containers "$conflict_network"; then
+        case "$choice" in
+            1)
+                local subnets subnet_v4 subnet_v6
+                subnets=$(suggest_subnet)
+                subnet_v4=$(echo "$subnets" | cut -d' ' -f1)
+                subnet_v6=$(echo "$subnets" | cut -d' ' -f2)
+                echo "Using subnet: $subnet_v4 (IPv6: $subnet_v6)"
+                export CLAB_MGMT_NETWORK_SUBNET="$subnet_v4"
+                export CLAB_MGMT_NETWORK_SUBNET_V6="$subnet_v6"
+                export CLAB_MGMT_NETWORK_NAME="clab-$$"
+                return 0
+                ;;
+            2)
+                echo "Please stop containers manually and re-run deploy."
+                return 1
+                ;;
+            *)
+                echo "Cancelled."
+                return 1
+                ;;
+        esac
+    else
+        case "$choice" in
+            1)
+                echo "Removing network '$conflict_network'..."
+                docker_cmd network rm "$conflict_network"
+                echo "Network removed."
+                return 0
+                ;;
+            2)
+                local subnets subnet_v4 subnet_v6
+                subnets=$(suggest_subnet)
+                subnet_v4=$(echo "$subnets" | cut -d' ' -f1)
+                subnet_v6=$(echo "$subnets" | cut -d' ' -f2)
+                echo "Using subnet: $subnet_v4 (IPv6: $subnet_v6)"
+                export CLAB_MGMT_NETWORK_SUBNET="$subnet_v4"
+                export CLAB_MGMT_NETWORK_SUBNET_V6="$subnet_v6"
+                export CLAB_MGMT_NETWORK_NAME="clab-$$"
+                return 0
+                ;;
+            *)
+                echo "Cancelled."
+                return 1
+                ;;
+        esac
+    fi
+}
+
 # --- Commands ---
 
+cmd_networks() {
+    echo "Docker networks and their subnets:"
+    echo ""
+    list_networks
+    echo ""
+
+    local conflict
+    conflict=$(find_network_by_subnet "$DEFAULT_SUBNET")
+
+    if [ -n "$conflict" ]; then
+        if [ "$conflict" = "$DEFAULT_NETWORK" ]; then
+            echo "Status: Network '$DEFAULT_NETWORK' exists with expected subnet (ready)"
+        else
+            echo "Status: Conflict - subnet $DEFAULT_SUBNET used by '$conflict'"
+            if network_has_containers "$conflict"; then
+                echo "        Network has running containers"
+            else
+                echo "        Network is unused (can be removed)"
+            fi
+        fi
+    else
+        echo "Status: Subnet $DEFAULT_SUBNET is available"
+    fi
+
+    echo ""
+    echo "Suggested available subnet: $(suggest_subnet | cut -d' ' -f1)"
+}
+
 cmd_deploy() {
+    # Validate network availability
+    if ! validate_network; then
+        exit 1
+    fi
+
     if [ "$USE_MINIMAL" = true ]; then
         echo "Deploying minimal lab (Alpine Linux)..."
     else
         echo "Deploying lab (image: $CEOS_IMAGE)..."
     fi
-    run_clab deploy -t "$(topo_path)" "$@"
+
+    # Build extra args for custom network settings
+    local extra_args=()
+    if [ -n "${CLAB_MGMT_NETWORK_SUBNET:-}" ]; then
+        extra_args+=(--ipv4-subnet "$CLAB_MGMT_NETWORK_SUBNET")
+    fi
+    if [ -n "${CLAB_MGMT_NETWORK_SUBNET_V6:-}" ]; then
+        extra_args+=(--ipv6-subnet "$CLAB_MGMT_NETWORK_SUBNET_V6")
+    fi
+    if [ -n "${CLAB_MGMT_NETWORK_NAME:-}" ]; then
+        extra_args+=(--network "$CLAB_MGMT_NETWORK_NAME")
+    fi
+
+    if [ "$PLATFORM" = "macos" ]; then
+        orb exec -m clab sudo CEOS_IMAGE="$CEOS_IMAGE" containerlab deploy -t "$(topo_path)" "${extra_args[@]}" "$@"
+    else
+        sudo CEOS_IMAGE="$CEOS_IMAGE" containerlab deploy -t "$(topo_path)" "${extra_args[@]}" "$@"
+    fi
 }
 
 cmd_destroy() {
     echo "Destroying lab..."
-    run_clab destroy -t "$(topo_path)" "$@"
+    # Try normal destroy first; if it fails due to network issues, offer cleanup
+    if ! run_clab destroy -t "$(topo_path)" "$@" 2>&1; then
+        echo ""
+        echo "Destroy failed. This can happen if the lab was deployed with a custom network."
+        echo "Try: $0 cleanup"
+    fi
+}
+
+cmd_cleanup() {
+    echo "Force cleanup of lab containers and networks..."
+    echo ""
+
+    # Find and remove lab containers
+    local containers
+    containers=$(docker_cmd ps -a --filter "name=clab-${LAB_NAME}" --format '{{.Names}}' || true)
+
+    if [ -n "$containers" ]; then
+        echo "Removing containers:"
+        for c in $containers; do
+            echo "  - $c"
+            docker_cmd rm -f "$c" >/dev/null 2>&1 || true
+        done
+    else
+        echo "No lab containers found."
+    fi
+
+    # Find and remove clab networks (custom networks created by deploy)
+    local networks
+    networks=$(docker_cmd network ls --format '{{.Name}}' | grep -E "^clab(-[0-9]+)?$" || true)
+
+    if [ -n "$networks" ]; then
+        echo ""
+        echo "Removing networks:"
+        for n in $networks; do
+            # Only remove if no containers attached
+            if ! network_has_containers "$n"; then
+                echo "  - $n"
+                docker_cmd network rm "$n" >/dev/null 2>&1 || true
+            else
+                echo "  - $n (skipped - has containers)"
+            fi
+        done
+    fi
+
+    # Remove lab directory
+    local lab_dir="$SCRIPT_DIR/clab-${LAB_NAME}"
+    if [ -d "$lab_dir" ]; then
+        echo ""
+        echo "Removing lab directory: $lab_dir"
+        rm -rf "$lab_dir"
+    fi
+
+    echo ""
+    echo "Cleanup complete."
 }
 
 cmd_inspect() {
@@ -187,11 +448,13 @@ Options:
   --minimal       Use the minimal Alpine-based topology (low resource)
 
 Commands:
-  deploy          Deploy the lab
+  deploy          Deploy the lab (validates network first)
   destroy         Destroy the lab
+  cleanup         Force remove lab containers and networks
   inspect         Show lab status
   save            Save running configs
   graph           Generate topology graph
+  networks        Show Docker networks and check for conflicts
   ssh <node>      SSH to a node (e.g., hub1)
   exec <node>     Open shell on a node (Cli for cEOS, sh for minimal)
   import <file>   Import a cEOS image tarball
@@ -246,9 +509,11 @@ command="$1"; shift
 case "$command" in
     deploy)   cmd_deploy "$@" ;;
     destroy)  cmd_destroy "$@" ;;
+    cleanup)  cmd_cleanup "$@" ;;
     inspect)  cmd_inspect "$@" ;;
     save)     cmd_save "$@" ;;
     graph)    cmd_graph "$@" ;;
+    networks) cmd_networks "$@" ;;
     ssh)      cmd_ssh "$@" ;;
     exec)     cmd_exec "$@" ;;
     import)   cmd_import "$@" ;;

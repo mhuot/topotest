@@ -2,10 +2,7 @@
 
 A containerlab-based network topology for testing [walktopo](https://github.com/mhuot/walktopo) SNMP discovery capabilities.
 
-> **⚠️ Apple Silicon Specific**: This guide is specifically for **macOS with Apple Silicon (ARM64/M1/M2/M3)**. If you're using Intel Macs, Linux, or Windows, the setup process will be different:
-> - **Intel Macs/Linux x86_64**: Use standard cEOS x86_64 images and follow [containerlab's standard installation](https://containerlab.dev/install/)
-> - **Windows**: Refer to [containerlab Windows installation guide](https://containerlab.dev/install/#windows)
-> - **Linux ARM64**: Similar to this guide but without OrbStack - use native Docker and containerlab
+Supports **macOS ARM64** (Apple Silicon, via OrbStack) and **Linux x86_64** (native).
 
 ## Topology Overview
 
@@ -57,19 +54,40 @@ The topology includes the following links:
 | site1 | 172.20.20.4 | 192.168.1.104/24 | Site 1 router |
 | site2 | 172.20.20.5 | 192.168.1.105/24 | Site 2 router |
 
+## Quick Start
+
+The `lab.sh` helper script auto-detects your platform and wraps all containerlab commands:
+
+```bash
+./lab.sh info       # Show detected platform and image
+./lab.sh deploy     # Deploy the lab
+./lab.sh inspect    # Check lab status
+./lab.sh ssh hub1   # SSH to a node
+./lab.sh destroy    # Tear down the lab
+```
+
+Run `./lab.sh help` for all available commands.
+
 ## Prerequisites
 
-**This setup is designed for Apple Silicon Macs only.**
+### macOS (Apple Silicon)
 
-- macOS with Apple Silicon (M1/M2/M3)
 - [OrbStack](https://orbstack.dev/) installed
-- Docker installed in OrbStack VM
+- Docker available in OrbStack VM
 - Containerlab installed in OrbStack VM
-- Arista cEOS ARM64 image (see setup instructions below)
+- Arista cEOS **ARM64** image (`ceosarm:4.35.1F`)
+
+### Linux (x86_64)
+
+- Docker installed
+- [Containerlab](https://containerlab.dev/install/) installed (v0.41+)
+- Arista cEOS **x86_64** image (`ceos64:4.35.1F`)
 
 ## Setup Instructions
 
-### 1. Install OrbStack and Create VM
+### macOS Setup
+
+#### 1. Install OrbStack and Create VM
 
 ```bash
 # Create a Linux VM in OrbStack
@@ -78,40 +96,50 @@ orb create ubuntu clab
 # Install Docker in the VM
 orb exec -m clab -s "curl -fsSL https://get.docker.com | sudo sh"
 
-# Install Containerlab
+# Install Containerlab in the VM
+orb exec -m clab bash -c "curl -sL https://containerlab.dev/setup | sudo bash"
 ```
 
-### 2. Import cEOS Image
+#### 2. Import cEOS Image
 
-The lab requires the Arista cEOS ARM image. Download it from [Arista's Getting Started with cEOS-lab in Containerlab guide](https://arista.my.site.com/AristaCommunity/s/article/Getting-Started-with-cEOS-lab-in-Containerlab).
-
-Import the ARM64 image into the VM's Docker:
+Download the ARM64 cEOS image from [Arista's Getting Started with cEOS-lab in Containerlab guide](https://arista.my.site.com/AristaCommunity/s/article/Getting-Started-with-cEOS-lab-in-Containerlab).
 
 ```bash
-# Import the cEOS image (from your cEOS tar file)
-orb exec -m clab docker import cEOSarm-lab-4.35.1F.tar ceosarm:4.35.1F
+./lab.sh import cEOSarm-lab-4.35.1F.tar
 ```
 
-**Note**: Make sure to download the ARM64 version (e.g., `cEOSarm-lab-4.35.1F.tar.xz`) for Apple Silicon Macs.
+### Linux Setup
 
-### 3. Deploy the Lab
+#### 1. Install Containerlab
 
 ```bash
-# Deploy the topology
-orb exec -m clab sudo containerlab deploy -t /Users/mhuot/topotest/topology.clab.yml
-
-# Verify deployment
-orb exec -m clab sudo containerlab inspect -t /Users/mhuot/topotest/topology.clab.yml
+curl -sL https://containerlab.dev/setup | sudo bash
 ```
 
-### 4. Access the Lab
+Docker must already be installed. See [Docker installation docs](https://docs.docker.com/engine/install/) if needed.
+
+#### 2. Import cEOS Image
+
+Download the x86_64 cEOS image from [Arista's Getting Started with cEOS-lab in Containerlab guide](https://arista.my.site.com/AristaCommunity/s/article/Getting-Started-with-cEOS-lab-in-Containerlab).
+
+```bash
+./lab.sh import cEOS64-lab-4.35.1F.tar
+```
+
+### Deploy the Lab
+
+```bash
+./lab.sh deploy
+```
+
+### Access Nodes
 
 ```bash
 # SSH to any node
-orb exec -m clab ssh admin@clab-topotest-hub1
+./lab.sh ssh hub1
 
-# Or use docker exec
-orb exec -m clab docker exec -it clab-topotest-hub1 Cli
+# Open Arista Cli on a node
+./lab.sh exec hub1
 ```
 
 ## SNMP Configuration
@@ -122,90 +150,139 @@ All nodes are pre-configured with:
 - **UDP Port**: 161
 - **LLDP**: Enabled on all interfaces
 
+## SNMP Testing with snmpwalk
+
+You can query any node directly using `snmpwalk` to verify SNMP is working before running walktopo.
+
+```mermaid
+graph LR
+  subgraph Host
+    snmpwalk
+  end
+  subgraph Containerlab Network 172.20.20.0/24
+    hub1["hub1 · 172.20.20.6"]
+    hub2["hub2 · 172.20.20.2"]
+    sub1["sub1 · 172.20.20.3"]
+    site1["site1 · 172.20.20.4"]
+    site2["site2 · 172.20.20.5"]
+  end
+  snmpwalk -- "UDP/161<br/>community: public" --> hub1
+  snmpwalk -.-> hub2
+  snmpwalk -.-> sub1
+  snmpwalk -.-> site1
+  snmpwalk -.-> site2
+```
+
+### Install snmpwalk
+
+**Linux (Debian/Ubuntu):**
+
+```bash
+sudo apt-get install snmp
+```
+
+**macOS:**
+
+```bash
+brew install net-snmp
+```
+
+### Running snmpwalk
+
+**Linux** — container IPs are reachable directly from the host:
+
+```bash
+# System description
+snmpwalk -v2c -c public 172.20.20.6 1.3.6.1.2.1.1
+
+# LLDP neighbor table
+snmpwalk -v2c -c public 172.20.20.6 1.0.8802.1.1.2
+
+# Walk all nodes
+for ip in 172.20.20.6 172.20.20.2 172.20.20.3 172.20.20.4 172.20.20.5; do
+  echo "=== $ip ==="
+  snmpwalk -v2c -c public "$ip" 1.3.6.1.2.1.1.1.0
+done
+```
+
+**macOS** — must run from inside the OrbStack VM:
+
+```bash
+# Install snmp tools in the VM
+orb exec -m clab sudo apt-get install -y snmp
+
+# Run snmpwalk from the VM
+orb exec -m clab snmpwalk -v2c -c public 172.20.20.6 1.3.6.1.2.1.1
+```
+
+### Common OIDs
+
+| OID | Description |
+|-----|-------------|
+| `1.3.6.1.2.1.1` | System MIB (sysDescr, sysName, etc.) |
+| `1.3.6.1.2.1.1.1.0` | sysDescr — system description string |
+| `1.3.6.1.2.1.1.5.0` | sysName — hostname |
+| `1.3.6.1.2.1.2.2` | Interfaces table (ifDescr, ifType, etc.) |
+| `1.0.8802.1.1.2` | LLDP MIB — neighbor discovery data |
+
 ## Testing with Walktopo
 
-### Install Walktopo in VM
+Walktopo must run where it can reach the container network (172.20.20.0/24). On macOS this means inside the OrbStack VM; on Linux it can run directly on the host.
 
-Walktopo must run inside the clab VM to access the container network. Choose one of the following installation methods:
+### Install Walktopo
 
 #### Option 1: Download Pre-built Binary (Easiest)
 
-Download the Linux ARM64 release from the [walktopo releases page](https://github.com/mhuot/walktopo/releases):
+Download from the [walktopo releases page](https://github.com/mhuot/walktopo/releases):
+
+**Linux x86_64:**
 
 ```bash
-# Download the latest Linux ARM64 release
+curl -LO https://github.com/mhuot/walktopo/releases/latest/download/walktopo_linux_amd64.tar.gz
+tar -xzf walktopo_linux_amd64.tar.gz
+sudo mv walktopo /usr/local/bin/walktopo
+sudo chmod +x /usr/local/bin/walktopo
+```
+
+**macOS (install into OrbStack VM):**
+
+```bash
 cd ~/Downloads
 curl -LO https://github.com/mhuot/walktopo/releases/latest/download/walktopo_linux_arm64.tar.gz
-
-# Extract the binary
 tar -xzf walktopo_linux_arm64.tar.gz
-
-# Copy to VM and install
 orb push -m clab walktopo /tmp/walktopo
 orb exec -m clab sudo mv /tmp/walktopo /usr/local/bin/walktopo
 orb exec -m clab sudo chmod +x /usr/local/bin/walktopo
-
-# Verify installation
-orb exec -m clab walktopo version
 ```
 
-#### Option 2: Build in OrbStack VM
-
-Build walktopo directly in the Linux VM:
+#### Option 2: Build from Source
 
 ```bash
-# Install Go in the VM (if not already installed)
-orb exec -m clab bash -c "curl -LO https://go.dev/dl/go1.23.5.linux-arm64.tar.gz"
-orb exec -m clab sudo rm -rf /usr/local/go
-orb exec -m clab sudo tar -C /usr/local -xzf go1.23.5.linux-arm64.tar.gz
-orb exec -m clab bash -c "echo 'export PATH=\$PATH:/usr/local/go/bin' >> ~/.bashrc"
-
-# Clone and build walktopo (OrbStack mounts your Mac filesystem in the VM)
-orb exec -m clab bash -c "cd /tmp && git clone https://github.com/mhuot/walktopo.git"
-orb exec -m clab bash -c "cd /tmp/walktopo && /usr/local/go/bin/go build -o walktopo ./cmd/walktopo"
-orb exec -m clab sudo mv /tmp/walktopo/walktopo /usr/local/bin/walktopo
-
-# Verify installation
-orb exec -m clab walktopo version
-```
-
-#### Option 3: Cross-Compile on Mac
-
-Build a Linux ARM64 binary on your Mac:
-
-```bash
-# Clone walktopo on your Mac
-cd ~/projects  # or your preferred directory
 git clone https://github.com/mhuot/walktopo.git
 cd walktopo
+go build -o walktopo ./cmd/walktopo
+sudo mv walktopo /usr/local/bin/walktopo
+```
 
-# Pull latest changes
-git pull
+On macOS, cross-compile for Linux ARM64 and copy into the VM:
 
-# Cross-compile for Linux ARM64
+```bash
 GOOS=linux GOARCH=arm64 go build -o walktopo-linux-arm64 ./cmd/walktopo
-
-# Copy to VM and install
 orb push -m clab walktopo-linux-arm64 /tmp/walktopo
 orb exec -m clab sudo mv /tmp/walktopo /usr/local/bin/walktopo
 orb exec -m clab sudo chmod +x /usr/local/bin/walktopo
-
-# Verify installation
-orb exec -m clab walktopo version
 ```
 
 ### Run SNMP Discovery
 
-From within the clab VM:
-
 ```bash
-# Using a seed IP to discover topology
-walktopo run --file job.json --api-url http://host.orb.internal:8081 --upload
+walktopo run --file job.json --api-url http://<host>:8081 --upload
 ```
 
-**Seed IP**: Use any node IP, e.g., `172.20.20.6` (hub1)
+- **Linux**: Use `http://localhost:8081` for host services.
+- **macOS (in VM)**: Use `http://host.orb.internal:8081` to reach the Mac.
 
-**Note**: If uploading to lldp-me or another service running on your Mac, use `host.orb.internal` instead of `localhost` to reach the Mac from the VM.
+**Seed IP**: Use any node IP, e.g., `172.20.20.6` (hub1).
 
 ### Example Job File
 
@@ -233,30 +310,47 @@ walktopo run --file job.json --api-url http://host.orb.internal:8081 --upload
 
 ## Lab Management
 
-### View Topology Graph
-
 ```bash
-# Generate and view interactive graph
-orb exec -m clab sudo containerlab graph -t /Users/mhuot/topotest/topology.clab.yml
+./lab.sh inspect     # Show lab status
+./lab.sh save        # Save running configs
+./lab.sh graph       # Generate topology graph
+./lab.sh destroy     # Destroy the lab
 ```
 
-### Save Configurations
+### Manual Commands
 
+If you prefer not to use `lab.sh`, you can run containerlab directly:
+
+**Linux:**
 ```bash
-# Save running configs
-orb exec -m clab sudo containerlab save -t /Users/mhuot/topotest/topology.clab.yml
+sudo containerlab deploy -t topology.clab.yml
+sudo containerlab inspect -t topology.clab.yml
+sudo containerlab destroy -t topology.clab.yml
 ```
 
-### Destroy Lab
+**macOS (via OrbStack):**
+```bash
+orb exec -m clab sudo containerlab deploy -t /path/to/topology.clab.yml
+orb exec -m clab sudo containerlab inspect -t /path/to/topology.clab.yml
+orb exec -m clab sudo containerlab destroy -t /path/to/topology.clab.yml
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CEOS_IMAGE` | Docker image name for cEOS nodes | `ceos64:4.35.1F` (x86_64) or `ceosarm:4.35.1F` (arm64) |
+
+The topology file uses `${CEOS_IMAGE:-ceos64:4.35.1F}` so it works with or without `lab.sh`. Override it to use a different image version:
 
 ```bash
-# Destroy the topology
-orb exec -m clab sudo containerlab destroy -t /Users/mhuot/topotest/topology.clab.yml
+CEOS_IMAGE=ceos64:4.36.0F ./lab.sh deploy
 ```
 
 ## Files
 
 - `topology.clab.yml` - Containerlab topology definition
+- `lab.sh` - Cross-platform helper script
 - `configs/` - Device startup configurations
   - `hub1.cfg` - Hub1 configuration
   - `hub2.cfg` - Hub2 configuration
@@ -264,7 +358,6 @@ orb exec -m clab sudo containerlab destroy -t /Users/mhuot/topotest/topology.cla
   - `site1.cfg` - Site1 configuration
   - `site2.cfg` - Site2 configuration
 - `topology.clab.drawio` - Draw.io diagram export
-- `clab-topotest/` - Lab runtime directory (created by containerlab)
 
 ## Troubleshooting
 
@@ -274,13 +367,15 @@ The container IPs (172.20.20.x) are only accessible from within the clab VM. Eit
 - Use SSH port forwarding
 - Use containerlab's built-in features
 
+On Linux, container IPs are reachable directly from the host.
+
 ### Image format errors
-Ensure you're using the ARM64 version of cEOS and that it's properly imported using `docker import` (not `docker load`).
+Ensure you're using the correct architecture image for your platform and that it's properly imported using `docker import` (not `docker load`).
 
 ### SNMP timeouts
 - Verify SNMP is enabled: `show snmp community`
 - Check firewall rules in the container
-- Ensure you're testing from within the clab VM network
+- Ensure you're testing from a network that can reach the container IPs
 
 ## Contributing
 

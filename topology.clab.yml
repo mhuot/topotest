@@ -4,27 +4,27 @@ topology:
   nodes:
     hub1:
       kind: ceos
-      image: ceosarm:4.35.1F
+      image: ${CEOS_IMAGE:-ceos64:4.35.1F}
       startup-config: configs/hub1.cfg
 
     hub2:
       kind: ceos
-      image: ceosarm:4.35.1F
+      image: ${CEOS_IMAGE:-ceos64:4.35.1F}
       startup-config: configs/hub2.cfg
 
     sub1:
       kind: ceos
-      image: ceosarm:4.35.1F
+      image: ${CEOS_IMAGE:-ceos64:4.35.1F}
       startup-config: configs/sub1.cfg
 
     site1:
       kind: ceos
-      image: ceosarm:4.35.1F
+      image: ${CEOS_IMAGE:-ceos64:4.35.1F}
       startup-config: configs/site1.cfg
 
     site2:
       kind: ceos
-      image: ceosarm:4.35.1F
+      image: ${CEOS_IMAGE:-ceos64:4.35.1F}
       startup-config: configs/site2.cfg
 
   links:

@@ -12,32 +12,41 @@ topology:
     switch1:
       exec:
         - apk add --no-cache lldpd net-snmp net-snmp-tools
-        - echo 'master agentx' > /etc/snmp/snmpd.conf
-        - echo 'rocommunity public' >> /etc/snmp/snmpd.conf
-        - echo 'syslocation Lab-Switch1' >> /etc/snmp/snmpd.conf
-        - echo 'syscontact admin@lab.local' >> /etc/snmp/snmpd.conf
+        - mkdir -p /var/agentx
+        - sh -c 'echo "rocommunity public" > /etc/snmp/snmpd.conf'
+        - sh -c 'echo "syslocation Lab-Switch1" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "syscontact admin@lab.local" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "agentaddress udp:0.0.0.0:161" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "master agentx" >> /etc/snmp/snmpd.conf'
         - snmpd -Lf /var/log/snmpd.log
-        - lldpd -M 4 -x
+        - sleep 2
+        - lldpd -x -M 4
 
     switch2:
       exec:
         - apk add --no-cache lldpd net-snmp net-snmp-tools
-        - echo 'master agentx' > /etc/snmp/snmpd.conf
-        - echo 'rocommunity public' >> /etc/snmp/snmpd.conf
-        - echo 'syslocation Lab-Switch2' >> /etc/snmp/snmpd.conf
-        - echo 'syscontact admin@lab.local' >> /etc/snmp/snmpd.conf
+        - mkdir -p /var/agentx
+        - sh -c 'echo "rocommunity public" > /etc/snmp/snmpd.conf'
+        - sh -c 'echo "syslocation Lab-Switch2" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "syscontact admin@lab.local" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "agentaddress udp:0.0.0.0:161" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "master agentx" >> /etc/snmp/snmpd.conf'
         - snmpd -Lf /var/log/snmpd.log
-        - lldpd -M 4 -x
+        - sleep 2
+        - lldpd -x -M 4
 
     switch3:
       exec:
         - apk add --no-cache lldpd net-snmp net-snmp-tools
-        - echo 'master agentx' > /etc/snmp/snmpd.conf
-        - echo 'rocommunity public' >> /etc/snmp/snmpd.conf
-        - echo 'syslocation Lab-Switch3' >> /etc/snmp/snmpd.conf
-        - echo 'syscontact admin@lab.local' >> /etc/snmp/snmpd.conf
+        - mkdir -p /var/agentx
+        - sh -c 'echo "rocommunity public" > /etc/snmp/snmpd.conf'
+        - sh -c 'echo "syslocation Lab-Switch3" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "syscontact admin@lab.local" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "agentaddress udp:0.0.0.0:161" >> /etc/snmp/snmpd.conf'
+        - sh -c 'echo "master agentx" >> /etc/snmp/snmpd.conf'
         - snmpd -Lf /var/log/snmpd.log
-        - lldpd -M 4 -x
+        - sleep 2
+        - lldpd -x -M 4
 
   links:
     - endpoints: ["switch1:eth1", "switch2:eth1"]

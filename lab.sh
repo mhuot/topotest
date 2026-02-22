@@ -7,7 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOPO_FILE="$SCRIPT_DIR/topology.clab.yml"
 TOPO_MINIMAL="$SCRIPT_DIR/topology-minimal.clab.yml"
-USE_MINIMAL=false
+TOPO_LLDP="$SCRIPT_DIR/topology-lldp.clab.yml"
+TOPO_MODE="full"   # full, minimal, lldp
 LAB_NAME="topotest"
 DEFAULT_SUBNET="172.20.20.0/24"
 DEFAULT_SUBNET_V6="3fff:172:20:20::/64"
@@ -73,22 +74,20 @@ run_clab() {
 
 # Resolve topology file path (macOS needs absolute path visible in VM)
 topo_path() {
-    local topo
-    if [ "$USE_MINIMAL" = true ]; then
-        topo="$TOPO_MINIMAL"
-    else
-        topo="$TOPO_FILE"
-    fi
-    echo "$topo"
+    case "$TOPO_MODE" in
+        minimal) echo "$TOPO_MINIMAL" ;;
+        lldp)    echo "$TOPO_LLDP" ;;
+        *)       echo "$TOPO_FILE" ;;
+    esac
 }
 
 # Set lab name based on topology
 set_lab_name() {
-    if [ "$USE_MINIMAL" = true ]; then
-        LAB_NAME="topotest-minimal"
-    else
-        LAB_NAME="topotest"
-    fi
+    case "$TOPO_MODE" in
+        minimal) LAB_NAME="topotest-minimal" ;;
+        lldp)    LAB_NAME="topotest-lldp" ;;
+        *)       LAB_NAME="topotest" ;;
+    esac
 }
 
 # --- Network validation ---
@@ -282,11 +281,11 @@ cmd_deploy() {
         exit 1
     fi
 
-    if [ "$USE_MINIMAL" = true ]; then
-        echo "Deploying minimal lab (Alpine Linux)..."
-    else
-        echo "Deploying lab (image: $CEOS_IMAGE)..."
-    fi
+    case "$TOPO_MODE" in
+        minimal) echo "Deploying minimal lab (Alpine Linux, 3 nodes)..." ;;
+        lldp)    echo "Deploying LLDP demo lab (Alpine Linux, 5 nodes)..." ;;
+        *)       echo "Deploying lab (image: $CEOS_IMAGE)..." ;;
+    esac
 
     # Build extra args for custom network settings
     local extra_args=()
@@ -396,10 +395,10 @@ cmd_exec() {
     fi
     local node="$1"; shift
     if [ $# -eq 0 ]; then
-        if [ "$USE_MINIMAL" = true ]; then
-            run_cmd docker exec -it "clab-${LAB_NAME}-${node}" sh
-        else
+        if [ "$TOPO_MODE" = "full" ]; then
             run_cmd docker exec -it "clab-${LAB_NAME}-${node}" Cli
+        else
+            run_cmd docker exec -it "clab-${LAB_NAME}-${node}" sh
         fi
     else
         run_cmd docker exec -it "clab-${LAB_NAME}-${node}" "$@"
@@ -419,13 +418,20 @@ cmd_import() {
 
 cmd_info() {
     echo "Platform:     $PLATFORM ($ARCH)"
-    if [ "$USE_MINIMAL" = true ]; then
-        echo "Topology:     minimal (Alpine Linux)"
-        echo "Image:        alpine:3.21"
-    else
-        echo "Topology:     full (Arista cEOS)"
-        echo "Image:        $CEOS_IMAGE"
-    fi
+    case "$TOPO_MODE" in
+        minimal)
+            echo "Topology:     minimal (Alpine Linux, 3 nodes)"
+            echo "Image:        alpine:3.21"
+            ;;
+        lldp)
+            echo "Topology:     lldp (Alpine Linux, 5 nodes)"
+            echo "Image:        alpine:3.21"
+            ;;
+        *)
+            echo "Topology:     full (Arista cEOS)"
+            echo "Image:        $CEOS_IMAGE"
+            ;;
+    esac
     echo "Lab name:     $LAB_NAME"
     if [ "$PLATFORM" = "macos" ]; then
         echo "Execution:    via OrbStack VM 'clab'"
@@ -437,17 +443,21 @@ cmd_info() {
 }
 
 cmd_validate() {
-    if [ "$USE_MINIMAL" = false ]; then
-        echo "Validation is only supported for the minimal topology."
+    if [ "$TOPO_MODE" = "full" ]; then
+        echo "Validation is only supported for Alpine-based topologies."
         echo "Run with: $0 --minimal validate"
+        echo "      or: $0 --lldp validate"
         return 0
     fi
 
-    local nodes="switch1 switch2 switch3"
-    local pass=0
-    local fail=0
+    local nodes pass=0 fail=0
 
-    echo "=== LLDP Validation (minimal topology) ==="
+    case "$TOPO_MODE" in
+        minimal) nodes="switch1 switch2 switch3" ;;
+        lldp)    nodes="core dist1 dist2 edge1 edge2" ;;
+    esac
+
+    echo "=== LLDP Validation ($TOPO_MODE topology) ==="
     echo ""
 
     # Check 1: lldpcli neighbors
@@ -457,23 +467,40 @@ cmd_validate() {
         local output
         output=$(run_cmd docker exec "$container" lldpcli show neighbors 2>&1) || true
 
-        # Determine expected neighbors
-        local expected1 expected2
-        case "$node" in
-            switch1) expected1="switch2" ; expected2="switch3" ;;
-            switch2) expected1="switch1" ; expected2="switch3" ;;
-            switch3) expected1="switch1" ; expected2="switch2" ;;
+        # Determine expected neighbors per topology
+        local expected=""
+        case "$TOPO_MODE" in
+            minimal)
+                case "$node" in
+                    switch1) expected="switch2 switch3" ;;
+                    switch2) expected="switch1 switch3" ;;
+                    switch3) expected="switch1 switch2" ;;
+                esac
+                ;;
+            lldp)
+                case "$node" in
+                    core)  expected="dist1 dist2" ;;
+                    dist1) expected="core dist2 edge1 edge2" ;;
+                    dist2) expected="core dist1 edge1 edge2" ;;
+                    edge1) expected="dist1 dist2" ;;
+                    edge2) expected="dist1 dist2" ;;
+                esac
+                ;;
         esac
 
-        local found1 found2
-        found1=$(echo "$output" | grep -c "$expected1" || true)
-        found2=$(echo "$output" | grep -c "$expected2" || true)
+        local all_found=true missing=""
+        for neighbor in $expected; do
+            if ! echo "$output" | grep -q "$neighbor"; then
+                all_found=false
+                missing="$missing $neighbor"
+            fi
+        done
 
-        if [ "$found1" -gt 0 ] && [ "$found2" -gt 0 ]; then
-            echo "  PASS  $node sees $expected1 and $expected2"
+        if [ "$all_found" = true ]; then
+            echo "  PASS  $node sees all expected neighbors ($expected)"
             pass=$((pass + 1))
         else
-            echo "  FAIL  $node missing neighbors (expected $expected1, $expected2)"
+            echo "  FAIL  $node missing neighbors:$missing (expected: $expected)"
             fail=$((fail + 1))
         fi
     done
@@ -507,12 +534,14 @@ cmd_validate() {
 
 usage() {
     cat <<EOF
-Usage: $0 [--minimal] <command> [options]
+Usage: $0 [--minimal|--lldp] <command> [options]
 
 Cross-platform helper for the topotest containerlab topology.
 
-Options:
-  --minimal       Use the minimal Alpine-based topology (low resource)
+Topology options:
+  (default)       Full 5-node Arista cEOS lab (requires cEOS image)
+  --minimal       Minimal 3-node Alpine triangle (low resource)
+  --lldp          LLDP demo 5-node Alpine 3-tier network (low resource)
 
 Commands:
   deploy          Deploy the lab (validates network first)
@@ -523,9 +552,9 @@ Commands:
   graph           Generate topology graph
   networks        Show Docker networks and check for conflicts
   ssh <node>      SSH to a node (e.g., hub1)
-  exec <node>     Open shell on a node (Cli for cEOS, sh for minimal)
+  exec <node>     Open shell on a node (Cli for cEOS, sh for Alpine)
   import <file>   Import a cEOS image tarball
-  validate        Validate LLDP neighbors and SNMP (minimal topology)
+  validate        Validate LLDP neighbors and SNMP (Alpine topologies)
   info            Show detected platform and settings
 
 Environment:
@@ -534,9 +563,11 @@ Environment:
 
 Examples:
   $0 deploy                    # Deploy full cEOS lab
-  $0 --minimal deploy          # Deploy minimal Alpine lab
+  $0 --minimal deploy          # Deploy minimal 3-node Alpine lab
+  $0 --lldp deploy             # Deploy LLDP demo 5-node Alpine lab
+  $0 --lldp exec core          # Shell into core node (lldp lab)
+  $0 --lldp validate           # Validate LLDP and SNMP on lldp lab
   $0 ssh hub1                  # SSH to hub1 (full lab)
-  $0 --minimal exec switch1    # Shell into switch1 (minimal lab)
   $0 import cEOS64-lab-4.35.1F.tar
 EOF
 }
@@ -549,7 +580,11 @@ detect_platform
 while [ $# -gt 0 ]; do
     case "$1" in
         --minimal|-m)
-            USE_MINIMAL=true
+            TOPO_MODE="minimal"
+            shift
+            ;;
+        --lldp|-l)
+            TOPO_MODE="lldp"
             shift
             ;;
         -*)

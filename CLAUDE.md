@@ -51,12 +51,15 @@ orb exec -m clab docker exec -it clab-topotest-hub1 Cli
 
 - **topology.clab.yml** — Full Containerlab topology. Declares 5 cEOS nodes and 8 inter-device links. Uses `${CEOS_IMAGE:-ceos64:4.35.1F}` for the node image — defaults to x86_64 on Linux, overridden to `ceosarm:4.35.1F` on ARM64 (set by `lab.sh` or manually).
 - **topology-minimal.clab.yml** — Lightweight topology using Alpine Linux. 3 nodes with lldpd + net-snmp installed via exec commands. No cEOS image required. Deploy directly with `sudo containerlab deploy -t topology-minimal.clab.yml`.
-- **lab.sh** — Cross-platform helper script. Detects macOS/Linux and arm64/x86_64, sets `CEOS_IMAGE`, wraps containerlab with OrbStack on macOS.
+- **topology-lldp.clab.yml** — LLDP discovery demo topology using Alpine Linux. 5 nodes in a 3-tier architecture (core / distribution / edge) with 7 links and redundant paths. Designed to demonstrate walktopo/lldp-me multi-hop LLDP discovery. No cEOS image required. Deploy with `./lab.sh --lldp deploy` or `sudo containerlab deploy -t topology-lldp.clab.yml`.
+- **lab.sh** — Cross-platform helper script. Detects macOS/Linux and arm64/x86_64, sets `CEOS_IMAGE`, wraps containerlab with OrbStack on macOS. Supports `--minimal` and `--lldp` flags for topology selection.
 - **configs/** — Arista EOS startup configurations, one per node. Each config sets up hostname, SNMP (community `public`, v2c), LLDP, management IP, and inter-device link IPs.
 
-### Network Layout
+### Network Layouts
 
-5 nodes: hub1, hub2, sub1, site1, site2. Connected in a redundant mesh with 8 links using /30 subnets (10.0.x.0/30). Management IPs are 192.168.1.101-105. Container IPs are in the 172.20.20.0/24 range.
+**Full topology (cEOS):** 5 nodes: hub1, hub2, sub1, site1, site2. Connected in a redundant mesh with 8 links using /30 subnets (10.0.x.0/30). Management IPs are 192.168.1.101-105. Container IPs are in the 172.20.20.0/24 range.
+
+**LLDP topology (Alpine):** 5 nodes in 3 tiers: core → dist1/dist2 → edge1/edge2. 7 links with dual-homed edge switches for redundancy. Each node runs lldpd (with AgentX) and net-snmp, with custom system descriptions and port descriptions for rich LLDP data. Ideal for demonstrating SNMP-based LLDP neighbor walks.
 
 ### Platform Support
 

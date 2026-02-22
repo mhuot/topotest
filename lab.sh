@@ -7,7 +7,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOPO_FILE="$SCRIPT_DIR/topology.clab.yml"
 TOPO_MINIMAL="$SCRIPT_DIR/topology-minimal.clab.yml"
+TOPO_SONIC="$SCRIPT_DIR/topology-sonic.clab.yml"
 USE_MINIMAL=false
+USE_SONIC=false
 LAB_NAME="topotest"
 DEFAULT_SUBNET="172.20.20.0/24"
 DEFAULT_SUBNET_V6="3fff:172:20:20::/64"
@@ -62,12 +64,16 @@ run_cmd() {
     fi
 }
 
-# Run a containerlab command with sudo, passing CEOS_IMAGE through
+# Run a containerlab command with sudo, passing image env vars through
 run_clab() {
+    local env_vars="CEOS_IMAGE=$CEOS_IMAGE"
+    if [ "$USE_SONIC" = true ]; then
+        env_vars="SONIC_IMAGE=${SONIC_IMAGE:-docker-sonic-vs:latest}"
+    fi
     if [ "$PLATFORM" = "macos" ]; then
-        orb exec -m clab sudo CEOS_IMAGE="$CEOS_IMAGE" containerlab "$@"
+        orb exec -m clab sudo $env_vars containerlab "$@"
     else
-        sudo CEOS_IMAGE="$CEOS_IMAGE" containerlab "$@"
+        sudo $env_vars containerlab "$@"
     fi
 }
 
@@ -76,6 +82,8 @@ topo_path() {
     local topo
     if [ "$USE_MINIMAL" = true ]; then
         topo="$TOPO_MINIMAL"
+    elif [ "$USE_SONIC" = true ]; then
+        topo="$TOPO_SONIC"
     else
         topo="$TOPO_FILE"
     fi
@@ -86,6 +94,8 @@ topo_path() {
 set_lab_name() {
     if [ "$USE_MINIMAL" = true ]; then
         LAB_NAME="topotest-minimal"
+    elif [ "$USE_SONIC" = true ]; then
+        LAB_NAME="topotest-sonic"
     else
         LAB_NAME="topotest"
     fi
@@ -284,6 +294,8 @@ cmd_deploy() {
 
     if [ "$USE_MINIMAL" = true ]; then
         echo "Deploying minimal lab (Alpine Linux)..."
+    elif [ "$USE_SONIC" = true ]; then
+        echo "Deploying SONiC lab (image: ${SONIC_IMAGE:-docker-sonic-vs:latest})..."
     else
         echo "Deploying lab (image: $CEOS_IMAGE)..."
     fi
@@ -300,10 +312,15 @@ cmd_deploy() {
         extra_args+=(--network "$CLAB_MGMT_NETWORK_NAME")
     fi
 
+    local env_vars="CEOS_IMAGE=$CEOS_IMAGE"
+    if [ "$USE_SONIC" = true ]; then
+        env_vars="SONIC_IMAGE=${SONIC_IMAGE:-docker-sonic-vs:latest}"
+    fi
+
     if [ "$PLATFORM" = "macos" ]; then
-        orb exec -m clab sudo CEOS_IMAGE="$CEOS_IMAGE" containerlab deploy -t "$(topo_path)" "${extra_args[@]}" "$@"
+        orb exec -m clab sudo $env_vars containerlab deploy -t "$(topo_path)" "${extra_args[@]}" "$@"
     else
-        sudo CEOS_IMAGE="$CEOS_IMAGE" containerlab deploy -t "$(topo_path)" "${extra_args[@]}" "$@"
+        sudo $env_vars containerlab deploy -t "$(topo_path)" "${extra_args[@]}" "$@"
     fi
 }
 
@@ -398,6 +415,8 @@ cmd_exec() {
     if [ $# -eq 0 ]; then
         if [ "$USE_MINIMAL" = true ]; then
             run_cmd docker exec -it "clab-${LAB_NAME}-${node}" sh
+        elif [ "$USE_SONIC" = true ]; then
+            run_cmd docker exec -it "clab-${LAB_NAME}-${node}" vtysh
         else
             run_cmd docker exec -it "clab-${LAB_NAME}-${node}" Cli
         fi
@@ -422,6 +441,9 @@ cmd_info() {
     if [ "$USE_MINIMAL" = true ]; then
         echo "Topology:     minimal (Alpine Linux)"
         echo "Image:        alpine:3.21"
+    elif [ "$USE_SONIC" = true ]; then
+        echo "Topology:     sonic (SONiC-VS)"
+        echo "Image:        ${SONIC_IMAGE:-docker-sonic-vs:latest}"
     else
         echo "Topology:     full (Arista cEOS)"
         echo "Image:        $CEOS_IMAGE"
@@ -507,12 +529,13 @@ cmd_validate() {
 
 usage() {
     cat <<EOF
-Usage: $0 [--minimal] <command> [options]
+Usage: $0 [--minimal|--sonic] <command> [options]
 
 Cross-platform helper for the topotest containerlab topology.
 
 Options:
   --minimal       Use the minimal Alpine-based topology (low resource)
+  --sonic         Use the SONiC-VS topology
 
 Commands:
   deploy          Deploy the lab (validates network first)
@@ -523,7 +546,7 @@ Commands:
   graph           Generate topology graph
   networks        Show Docker networks and check for conflicts
   ssh <node>      SSH to a node (e.g., hub1)
-  exec <node>     Open shell on a node (Cli for cEOS, sh for minimal)
+  exec <node>     Open shell on a node (Cli for cEOS, vtysh for SONiC, sh for minimal)
   import <file>   Import a cEOS image tarball
   validate        Validate LLDP neighbors and SNMP (minimal topology)
   info            Show detected platform and settings
@@ -531,11 +554,15 @@ Commands:
 Environment:
   CEOS_IMAGE      Override the cEOS Docker image name
                   Default: ceos64:4.35.1F (x86_64) or ceosarm:4.35.1F (arm64)
+  SONIC_IMAGE     Override the SONiC-VS Docker image name
+                  Default: docker-sonic-vs:latest
 
 Examples:
   $0 deploy                    # Deploy full cEOS lab
   $0 --minimal deploy          # Deploy minimal Alpine lab
+  $0 --sonic deploy            # Deploy SONiC-VS lab
   $0 ssh hub1                  # SSH to hub1 (full lab)
+  $0 --sonic exec hub1         # Open vtysh on hub1 (SONiC lab)
   $0 --minimal exec switch1    # Shell into switch1 (minimal lab)
   $0 import cEOS64-lab-4.35.1F.tar
 EOF
@@ -550,6 +577,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --minimal|-m)
             USE_MINIMAL=true
+            shift
+            ;;
+        --sonic|-s)
+            USE_SONIC=true
             shift
             ;;
         -*)

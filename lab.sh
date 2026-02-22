@@ -283,7 +283,7 @@ cmd_deploy() {
 
     case "$TOPO_MODE" in
         minimal) echo "Deploying minimal lab (Alpine Linux, 3 nodes)..." ;;
-        lldp)    echo "Deploying LLDP demo lab (Alpine Linux, 5 nodes)..." ;;
+        lldp)    echo "Deploying LLDP demo lab (SR Linux, 5 nodes)..." ;;
         *)       echo "Deploying lab (image: $CEOS_IMAGE)..." ;;
     esac
 
@@ -395,11 +395,11 @@ cmd_exec() {
     fi
     local node="$1"; shift
     if [ $# -eq 0 ]; then
-        if [ "$TOPO_MODE" = "full" ]; then
-            run_cmd docker exec -it "clab-${LAB_NAME}-${node}" Cli
-        else
-            run_cmd docker exec -it "clab-${LAB_NAME}-${node}" sh
-        fi
+        case "$TOPO_MODE" in
+            full)    run_cmd docker exec -it "clab-${LAB_NAME}-${node}" Cli ;;
+            lldp)    run_cmd docker exec -it "clab-${LAB_NAME}-${node}" sr_cli ;;
+            minimal) run_cmd docker exec -it "clab-${LAB_NAME}-${node}" sh ;;
+        esac
     else
         run_cmd docker exec -it "clab-${LAB_NAME}-${node}" "$@"
     fi
@@ -424,8 +424,8 @@ cmd_info() {
             echo "Image:        alpine:3.21"
             ;;
         lldp)
-            echo "Topology:     lldp (Alpine Linux, 5 nodes)"
-            echo "Image:        alpine:3.21"
+            echo "Topology:     lldp (Nokia SR Linux, 5 nodes)"
+            echo "Image:        ghcr.io/nokia/srlinux:latest"
             ;;
         *)
             echo "Topology:     full (Arista cEOS)"
@@ -444,7 +444,7 @@ cmd_info() {
 
 cmd_validate() {
     if [ "$TOPO_MODE" = "full" ]; then
-        echo "Validation is only supported for Alpine-based topologies."
+        echo "Validation is only supported for lightweight topologies."
         echo "Run with: $0 --minimal validate"
         echo "      or: $0 --lldp validate"
         return 0
@@ -460,12 +460,18 @@ cmd_validate() {
     echo "=== LLDP Validation ($TOPO_MODE topology) ==="
     echo ""
 
-    # Check 1: lldpcli neighbors
-    echo "--- Check 1: lldpcli neighbors ---"
+    # Check 1: LLDP neighbors
+    echo "--- Check 1: LLDP neighbors ---"
     for node in $nodes; do
         local container="clab-${LAB_NAME}-${node}"
         local output
-        output=$(run_cmd docker exec "$container" lldpcli show neighbors 2>&1) || true
+
+        # SR Linux uses sr_cli; Alpine uses lldpcli
+        if [ "$TOPO_MODE" = "lldp" ]; then
+            output=$(run_cmd docker exec "$container" sr_cli -e -c "show system lldp neighbor" 2>&1) || true
+        else
+            output=$(run_cmd docker exec "$container" lldpcli show neighbors 2>&1) || true
+        fi
 
         # Determine expected neighbors per topology
         local expected=""
@@ -507,19 +513,32 @@ cmd_validate() {
 
     echo ""
 
-    # Check 2: SNMP LLDP MIB
-    echo "--- Check 2: SNMP LLDP MIB ---"
+    # Check 2: SNMP reachability
+    echo "--- Check 2: SNMP ---"
     for node in $nodes; do
         local container="clab-${LAB_NAME}-${node}"
         local output
-        output=$(run_cmd docker exec "$container" snmpwalk -v2c -c public localhost 1.0.8802.1.1.2 2>&1) || true
 
-        if [ -n "$output" ] && ! echo "$output" | grep -q "No Such Object\|Timeout\|No SNMP response"; then
-            echo "  PASS  $node LLDP MIB returns data"
-            pass=$((pass + 1))
+        if [ "$TOPO_MODE" = "lldp" ]; then
+            # SR Linux: verify SNMP server is configured and running
+            output=$(run_cmd docker exec "$container" sr_cli -e -c "info from state system snmp" 2>&1) || true
+            if [ -n "$output" ] && echo "$output" | grep -q "admin-state"; then
+                echo "  PASS  $node SNMP server running"
+                pass=$((pass + 1))
+            else
+                echo "  FAIL  $node SNMP server not detected"
+                fail=$((fail + 1))
+            fi
         else
-            echo "  FAIL  $node LLDP MIB empty or unreachable"
-            fail=$((fail + 1))
+            # Alpine: snmpwalk against localhost
+            output=$(run_cmd docker exec "$container" snmpwalk -v2c -c public localhost 1.0.8802.1.1.2 2>&1) || true
+            if [ -n "$output" ] && ! echo "$output" | grep -q "No Such Object\|Timeout\|No SNMP response"; then
+                echo "  PASS  $node LLDP MIB returns data"
+                pass=$((pass + 1))
+            else
+                echo "  FAIL  $node LLDP MIB empty or unreachable"
+                fail=$((fail + 1))
+            fi
         fi
     done
 
@@ -541,7 +560,7 @@ Cross-platform helper for the topotest containerlab topology.
 Topology options:
   (default)       Full 5-node Arista cEOS lab (requires cEOS image)
   --minimal       Minimal 3-node Alpine triangle (low resource)
-  --lldp          LLDP demo 5-node Alpine 3-tier network (low resource)
+  --lldp          LLDP demo 5-node SR Linux 3-tier network (no image import)
 
 Commands:
   deploy          Deploy the lab (validates network first)
@@ -552,9 +571,9 @@ Commands:
   graph           Generate topology graph
   networks        Show Docker networks and check for conflicts
   ssh <node>      SSH to a node (e.g., hub1)
-  exec <node>     Open shell on a node (Cli for cEOS, sh for Alpine)
+  exec <node>     Open shell on a node (Cli/sr_cli/sh per topology)
   import <file>   Import a cEOS image tarball
-  validate        Validate LLDP neighbors and SNMP (Alpine topologies)
+  validate        Validate LLDP neighbors and SNMP (non-cEOS topologies)
   info            Show detected platform and settings
 
 Environment:

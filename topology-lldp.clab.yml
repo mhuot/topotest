@@ -1,7 +1,8 @@
 # LLDP discovery demo topology for walktopo / lldp-me testing
-# Uses Alpine Linux containers (~50MB each) — no cEOS image required
+# Uses Nokia SR Linux (~500MB each) — free image, auto-pulled from ghcr.io
 # 5 nodes in a 3-tier architecture (core / distribution / edge)
 # 7 links with redundant paths — complex enough for realistic LLDP walks
+# SNMP (community public) and LLDP are enabled by default
 #
 # Topology:
 #
@@ -11,120 +12,38 @@
 #        / \      / \
 #     edge1  edge2
 #
-# Deploy: sudo containerlab deploy -t topology-lldp.clab.yml
+# Deploy: ./lab.sh --lldp deploy
+#     or: sudo containerlab deploy -t topology-lldp.clab.yml
 
 name: topotest-lldp
 
 topology:
   defaults:
-    kind: linux
-    image: alpine:3.21
+    kind: srl
+    image: ghcr.io/nokia/srlinux:latest
 
   nodes:
     core:
-      exec:
-        - apk add --no-cache lldpd net-snmp net-snmp-tools
-        - mkdir -p /var/agentx
-        - sh -c 'echo "rocommunity public" > /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syslocation Core-DataCenter-Floor1" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syscontact noc@lab.local" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "sysname core" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "agentaddress udp:0.0.0.0:161" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "master agentx" >> /etc/snmp/snmpd.conf'
-        - snmpd -Lf /var/log/snmpd.log
-        - sleep 2
-        - lldpd -x -M 4
-        - sleep 1
-        - lldpcli configure system description "Core Router"
-        - lldpcli configure ports eth1 lldp portdescription "Uplink to dist1"
-        - lldpcli configure ports eth2 lldp portdescription "Uplink to dist2"
-
+      startup-config: configs/lldp/core.cfg
     dist1:
-      exec:
-        - apk add --no-cache lldpd net-snmp net-snmp-tools
-        - mkdir -p /var/agentx
-        - sh -c 'echo "rocommunity public" > /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syslocation Distribution-Building-A" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syscontact noc@lab.local" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "sysname dist1" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "agentaddress udp:0.0.0.0:161" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "master agentx" >> /etc/snmp/snmpd.conf'
-        - snmpd -Lf /var/log/snmpd.log
-        - sleep 2
-        - lldpd -x -M 4
-        - sleep 1
-        - lldpcli configure system description "Distribution Switch 1"
-        - lldpcli configure ports eth1 lldp portdescription "Uplink to core"
-        - lldpcli configure ports eth2 lldp portdescription "Cross-link to dist2"
-        - lldpcli configure ports eth3 lldp portdescription "Downlink to edge1"
-        - lldpcli configure ports eth4 lldp portdescription "Downlink to edge2"
-
+      startup-config: configs/lldp/dist1.cfg
     dist2:
-      exec:
-        - apk add --no-cache lldpd net-snmp net-snmp-tools
-        - mkdir -p /var/agentx
-        - sh -c 'echo "rocommunity public" > /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syslocation Distribution-Building-B" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syscontact noc@lab.local" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "sysname dist2" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "agentaddress udp:0.0.0.0:161" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "master agentx" >> /etc/snmp/snmpd.conf'
-        - snmpd -Lf /var/log/snmpd.log
-        - sleep 2
-        - lldpd -x -M 4
-        - sleep 1
-        - lldpcli configure system description "Distribution Switch 2"
-        - lldpcli configure ports eth1 lldp portdescription "Uplink to core"
-        - lldpcli configure ports eth2 lldp portdescription "Cross-link to dist1"
-        - lldpcli configure ports eth3 lldp portdescription "Downlink to edge1"
-        - lldpcli configure ports eth4 lldp portdescription "Downlink to edge2"
-
+      startup-config: configs/lldp/dist2.cfg
     edge1:
-      exec:
-        - apk add --no-cache lldpd net-snmp net-snmp-tools
-        - mkdir -p /var/agentx
-        - sh -c 'echo "rocommunity public" > /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syslocation Edge-Rack1-Floor2" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syscontact noc@lab.local" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "sysname edge1" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "agentaddress udp:0.0.0.0:161" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "master agentx" >> /etc/snmp/snmpd.conf'
-        - snmpd -Lf /var/log/snmpd.log
-        - sleep 2
-        - lldpd -x -M 4
-        - sleep 1
-        - lldpcli configure system description "Edge Access Switch 1"
-        - lldpcli configure ports eth1 lldp portdescription "Uplink to dist1"
-        - lldpcli configure ports eth2 lldp portdescription "Uplink to dist2"
-
+      startup-config: configs/lldp/edge1.cfg
     edge2:
-      exec:
-        - apk add --no-cache lldpd net-snmp net-snmp-tools
-        - mkdir -p /var/agentx
-        - sh -c 'echo "rocommunity public" > /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syslocation Edge-Rack2-Floor2" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "syscontact noc@lab.local" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "sysname edge2" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "agentaddress udp:0.0.0.0:161" >> /etc/snmp/snmpd.conf'
-        - sh -c 'echo "master agentx" >> /etc/snmp/snmpd.conf'
-        - snmpd -Lf /var/log/snmpd.log
-        - sleep 2
-        - lldpd -x -M 4
-        - sleep 1
-        - lldpcli configure system description "Edge Access Switch 2"
-        - lldpcli configure ports eth1 lldp portdescription "Uplink to dist1"
-        - lldpcli configure ports eth2 lldp portdescription "Uplink to dist2"
+      startup-config: configs/lldp/edge2.cfg
 
   links:
     # Core to distribution layer
-    - endpoints: ["core:eth1", "dist1:eth1"]
-    - endpoints: ["core:eth2", "dist2:eth1"]
+    - endpoints: ["core:e1-1", "dist1:e1-1"]
+    - endpoints: ["core:e1-2", "dist2:e1-1"]
 
     # Inter-distribution cross-link
-    - endpoints: ["dist1:eth2", "dist2:eth2"]
+    - endpoints: ["dist1:e1-2", "dist2:e1-2"]
 
     # Distribution to edge (dual-homed for redundancy)
-    - endpoints: ["dist1:eth3", "edge1:eth1"]
-    - endpoints: ["dist1:eth4", "edge2:eth1"]
-    - endpoints: ["dist2:eth3", "edge1:eth2"]
-    - endpoints: ["dist2:eth4", "edge2:eth2"]
+    - endpoints: ["dist1:e1-3", "edge1:e1-1"]
+    - endpoints: ["dist1:e1-4", "edge2:e1-1"]
+    - endpoints: ["dist2:e1-3", "edge1:e1-2"]
+    - endpoints: ["dist2:e1-4", "edge2:e1-2"]

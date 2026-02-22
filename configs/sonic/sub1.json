@@ -1,0 +1,64 @@
+{
+    "DEVICE_METADATA": {
+        "localhost": {
+            "hostname": "sub1",
+            "hwsku": "Force10-S6000",
+            "mac": "52:54:00:03:03:03",
+            "platform": "x86_64-kvm_x86_64-r0",
+            "type": "LeafRouter"
+        }
+    },
+    "PORT": {
+        "Ethernet0": {
+            "admin_status": "up",
+            "alias": "fortyGigE0/0",
+            "index": "0",
+            "lanes": "25,26,27,28",
+            "mtu": "9100",
+            "speed": "40000"
+        },
+        "Ethernet4": {
+            "admin_status": "up",
+            "alias": "fortyGigE0/4",
+            "index": "1",
+            "lanes": "29,30,31,32",
+            "mtu": "9100",
+            "speed": "40000"
+        },
+        "Ethernet8": {
+            "admin_status": "up",
+            "alias": "fortyGigE0/8",
+            "index": "2",
+            "lanes": "33,34,35,36",
+            "mtu": "9100",
+            "speed": "40000"
+        }
+    },
+    "INTERFACE": {
+        "Ethernet0": {},
+        "Ethernet0|10.0.13.2/30": {},
+        "Ethernet4": {},
+        "Ethernet4|10.0.23.2/30": {},
+        "Ethernet8": {},
+        "Ethernet8|10.0.34.1/30": {}
+    },
+    "LOOPBACK_INTERFACE": {
+        "Loopback0": {},
+        "Loopback0|192.168.1.103/32": {}
+    },
+    "FEATURE": {
+        "bgp": {"auto_restart": "enabled", "state": "enabled"},
+        "database": {"auto_restart": "always_enabled", "state": "always_enabled"},
+        "lldp": {"auto_restart": "enabled", "state": "enabled"},
+        "pmon": {"auto_restart": "enabled", "state": "enabled"},
+        "snmp": {"auto_restart": "enabled", "state": "enabled"},
+        "swss": {"auto_restart": "enabled", "state": "enabled"},
+        "syncd": {"auto_restart": "enabled", "state": "enabled"},
+        "teamd": {"auto_restart": "enabled", "state": "enabled"}
+    },
+    "SNMP_COMMUNITY": {
+        "public": {
+            "TYPE": "RO"
+        }
+    }
+}

@@ -1,0 +1,48 @@
+# SONiC-VS topology for walktopo SNMP/LLDP testing
+# Uses SONiC Virtual Switch containers (sonic-vs kind)
+# Same 5-node redundant hub-and-spoke layout as the cEOS topology
+#
+# Image: download from https://sonic-build.azurewebsites.net/ui/sonic/pipelines
+#   Look for "vs" platform, pick a branch (e.g. 202405), download docker-sonic-vs.gz
+#   Load with: docker load < docker-sonic-vs.gz
+#
+# Interface mapping (Force10-S6000 hwsku):
+#   eth1 -> Ethernet0, eth2 -> Ethernet4, eth3 -> Ethernet8, eth4 -> Ethernet12
+
+name: topotest-sonic
+
+topology:
+  defaults:
+    kind: sonic-vs
+    image: ${SONIC_IMAGE:-docker-sonic-vs:latest}
+
+  nodes:
+    hub1:
+      startup-config: configs/sonic/hub1.json
+
+    hub2:
+      startup-config: configs/sonic/hub2.json
+
+    sub1:
+      startup-config: configs/sonic/sub1.json
+
+    site1:
+      startup-config: configs/sonic/site1.json
+
+    site2:
+      startup-config: configs/sonic/site2.json
+
+  links:
+    # Hub1 connections
+    - endpoints: ["hub1:eth1", "hub2:eth1"]
+    - endpoints: ["hub1:eth2", "sub1:eth1"]
+    - endpoints: ["hub1:eth3", "site1:eth1"]
+    - endpoints: ["hub1:eth4", "site2:eth1"]
+
+    # Hub2 connections
+    - endpoints: ["hub2:eth2", "sub1:eth2"]
+    - endpoints: ["hub2:eth3", "site1:eth2"]
+    - endpoints: ["hub2:eth4", "site2:eth2"]
+
+    # sub1 to site1
+    - endpoints: ["sub1:eth3", "site1:eth3"]
